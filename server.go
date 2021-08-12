@@ -120,7 +120,6 @@ func sendMessageAboutError(myResponseMsg responseErrMsg, msgT int, cient *websoc
 		fmt.Println("json Marshal err: ", err)
 		return err
 	}
-
 	err = cient.WriteMessage(msgT, msg)
 	if err != nil {
 		log.Println("WriteMessage err:", err)
@@ -132,65 +131,66 @@ func sendMessageAboutError(myResponseMsg responseErrMsg, msgT int, cient *websoc
 	return err
 }
 
-func main() {
-	flag.Parse() //анализ флагов
-
-	//оповещение всех клиентов о новом сообщении
-	go func() {
-		for {
-			select {
-			case newMsg := <-channel:
-				var myRequestMsg requestMsg
-				//пытаемся получить структуру
-				if err := json.Unmarshal(newMsg.data, &myRequestMsg); err != nil {
-					fmt.Println("json Unmarshal err: ", err)
-					//Вызов процедуры с неправильной структурой
+//механизм оповещений
+func annunciator() {
+	for {
+		select {
+		case newMsg := <-channel:
+			var myRequestMsg requestMsg
+			//пытаемся получить структуру
+			if err := json.Unmarshal(newMsg.data, &myRequestMsg); err != nil {
+				fmt.Println("json Unmarshal err: ", err)
+				//Вызов процедуры с неправильной структурой
+				fmt.Println("switch default")
+				var myResponseErrMsg responseErrMsg
+				myResponseErrMsg.Id = myRequestMsg.Id
+				myResponseErrMsg.Jsonrpc = "2.0"
+				myResponseErrMsg.Jerror.Code = -32600
+				myResponseErrMsg.Jerror.Message = "Invalid JSON-RPC."
+				if err := sendMessageAboutError(myResponseErrMsg, newMsg.typ, newMsg.sender); err != nil {
+					fmt.Println("sendMessage err: ", err)
+				}
+			} else {
+				fmt.Println("We got request for:", myRequestMsg.Method)
+				var myResponseMsg responseMsg
+				myResponseMsg.Id = myRequestMsg.Id
+				//реакция на метод
+				switch myRequestMsg.Method {
+				case "sendMessage":
+					fmt.Println("sendMessage")
+					myResponseMsg.Jsonrpc = "2.0"
+					myResponseMsg.Result = myRequestMsg.Param.Message
+					if err := sendMessage(myResponseMsg, newMsg.typ, allClient); err != nil {
+						fmt.Println("sendMessage err: ", err)
+					}
+				case "sendEcho":
+					fmt.Println("sendEcho")
+					myResponseMsg.Jsonrpc = "2.0"
+					myResponseMsg.Result = myRequestMsg.Param.Message
+					var echoclient = []*websocket.Conn{}
+					echoclient = append(echoclient, newMsg.sender)
+					if err := sendMessage(myResponseMsg, newMsg.typ, echoclient); err != nil {
+						fmt.Println("sendMessage err: ", err)
+					}
+				default:
 					fmt.Println("switch default")
 					var myResponseErrMsg responseErrMsg
 					myResponseErrMsg.Id = myRequestMsg.Id
 					myResponseErrMsg.Jsonrpc = "2.0"
-					myResponseErrMsg.Jerror.Code = -32600
-					myResponseErrMsg.Jerror.Message = "Invalid JSON-RPC."
+					myResponseErrMsg.Jerror.Code = -32601
+					myResponseErrMsg.Jerror.Message = "Procedure not found."
 					if err := sendMessageAboutError(myResponseErrMsg, newMsg.typ, newMsg.sender); err != nil {
 						fmt.Println("sendMessage err: ", err)
-					}
-				} else {
-					fmt.Println("We got request for:", myRequestMsg.Method)
-					var myResponseMsg responseMsg
-					myResponseMsg.Id = myRequestMsg.Id
-					//реакция на метод
-					switch myRequestMsg.Method {
-					case "sendMessage":
-						fmt.Println("sendMessage")
-						myResponseMsg.Jsonrpc = "2.0"
-						myResponseMsg.Result = myRequestMsg.Param.Message
-						if err := sendMessage(myResponseMsg, newMsg.typ, allClient); err != nil {
-							fmt.Println("sendMessage err: ", err)
-						}
-					case "sendEcho":
-						fmt.Println("sendEcho")
-						myResponseMsg.Jsonrpc = "2.0"
-						myResponseMsg.Result = myRequestMsg.Param.Message
-						var echoclient = []*websocket.Conn{}
-						echoclient = append(echoclient, newMsg.sender)
-						if err := sendMessage(myResponseMsg, newMsg.typ, echoclient); err != nil {
-							fmt.Println("sendMessage err: ", err)
-						}
-					default:
-						fmt.Println("switch default")
-						var myResponseErrMsg responseErrMsg
-						myResponseErrMsg.Id = myRequestMsg.Id
-						myResponseErrMsg.Jsonrpc = "2.0"
-						myResponseErrMsg.Jerror.Code = -32601
-						myResponseErrMsg.Jerror.Message = "Procedure not found."
-						if err := sendMessageAboutError(myResponseErrMsg, newMsg.typ, newMsg.sender); err != nil {
-							fmt.Println("sendMessage err: ", err)
-						}
 					}
 				}
 			}
 		}
-	}()
+	}
+}
+
+func main() {
+	flag.Parse()     //анализ флагов
+	go annunciator() //оповещение всех клиентов о новом сообщении
 	fmt.Println("Run my websocket server")
 	http.HandleFunc("/", wsEndpoint) //связываемся с обработчиком
 	log.Fatal(http.ListenAndServe(*addr, nil))
