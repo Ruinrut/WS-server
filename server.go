@@ -68,28 +68,23 @@ func wsEndpoint(w http.ResponseWriter, r *http.Request) {
 	//подключение
 	connect, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println("Upgrade err:", err)
+		fmt.Println("Upgrade err:", err)
 		return
 	}
 	//добавление нового клиента
 	allClient = append(allClient, connect)
 	go func(connect *websocket.Conn, channelIO chan dataIn) {
-		print(connect)
-		fmt.Println(" cient connect")
 		defer connect.Close() //закрыть соединение по завершению функции
-
 		for {
 			//получаем сообщение от клиента
 			msgT, message, err := connect.ReadMessage()
 			if err != nil {
-				log.Println("ReadMessage err:", err)
+				fmt.Println("ReadMessage err:", err)
 				return
 			}
 			//отправляем сообщение на оповещение
 			data := dataIn{message, msgT, connect}
 			channelIO <- data
-			print(connect)
-			fmt.Println(" put msg in ch")
 		}
 
 	}(connect, channel)
@@ -105,11 +100,8 @@ func sendMessage(myResponseMsg responseMsg, msgT int, cients []*websocket.Conn) 
 	for num := range cients {
 		err = cients[num].WriteMessage(msgT, msg)
 		if err != nil {
-			log.Println("WriteMessage err:", err)
-			return err
+			fmt.Println("WriteMessage err:", err)
 		}
-		print(cients[num])
-		fmt.Println(" Resend")
 	}
 	return err
 }
@@ -122,12 +114,9 @@ func sendMessageAboutError(myResponseMsg responseErrMsg, msgT int, cient *websoc
 	}
 	err = cient.WriteMessage(msgT, msg)
 	if err != nil {
-		log.Println("WriteMessage err:", err)
+		fmt.Println("WriteMessage err:", err)
 		return err
 	}
-	print(cient)
-	fmt.Println(" Resend")
-
 	return err
 }
 
@@ -141,7 +130,6 @@ func annunciator() {
 			if err := json.Unmarshal(newMsg.data, &myRequestMsg); err != nil {
 				fmt.Println("json Unmarshal err: ", err)
 				//Вызов процедуры с неправильной структурой
-				fmt.Println("switch default")
 				var myResponseErrMsg responseErrMsg
 				myResponseErrMsg.Id = myRequestMsg.Id
 				myResponseErrMsg.Jsonrpc = "2.0"
@@ -151,20 +139,17 @@ func annunciator() {
 					fmt.Println("sendMessage err: ", err)
 				}
 			} else {
-				fmt.Println("We got request for:", myRequestMsg.Method)
 				var myResponseMsg responseMsg
 				myResponseMsg.Id = myRequestMsg.Id
 				//реакция на метод
 				switch myRequestMsg.Method {
 				case "sendMessage":
-					fmt.Println("sendMessage")
 					myResponseMsg.Jsonrpc = "2.0"
 					myResponseMsg.Result = myRequestMsg.Param.Message
 					if err := sendMessage(myResponseMsg, newMsg.typ, allClient); err != nil {
 						fmt.Println("sendMessage err: ", err)
 					}
 				case "sendEcho":
-					fmt.Println("sendEcho")
 					myResponseMsg.Jsonrpc = "2.0"
 					myResponseMsg.Result = myRequestMsg.Param.Message
 					var echoclient = []*websocket.Conn{}
@@ -173,7 +158,6 @@ func annunciator() {
 						fmt.Println("sendMessage err: ", err)
 					}
 				default:
-					fmt.Println("switch default")
 					var myResponseErrMsg responseErrMsg
 					myResponseErrMsg.Id = myRequestMsg.Id
 					myResponseErrMsg.Jsonrpc = "2.0"
